@@ -83,11 +83,15 @@ snowsql -f 06_cortex_agent.sql
 
 | Category | Monthly Cost |
 |----------|-------------|
-| Storage (< 5 MB) | < $0.01 |
-| Weekly Task (XS warehouse, ~2 min/week) | ~$0.26 |
-| Agent queries (~50/month) | ~$3.00 |
-| Brave API (free tier, <1000 calls/month) | $0.00 |
-| **Total** | **~$3.60/month** |
+| Storage (< 5 MB) | < EUR 0.01 |
+| Weekly Task (XS warehouse, ~2 min/week) | ~EUR 0.26 |
+| Agent queries (~50/month, Cortex AI) | ~EUR 3.00 |
+| Custom tool UDF calls (~10/month) | ~EUR 0.34 |
+| Brave API (free tier, <1000 calls/month) | EUR 0.00 |
+| **Total (light demo)** | **~EUR 3.60/month** |
+| **Total (heavy demo, ~150 queries)** | **~EUR 10.00/month** |
+
+See `07_finops_monitoring.sql` for detailed cost monitoring queries, budget alerts, optimization strategies, and health checks.
 
 ## Data Model
 

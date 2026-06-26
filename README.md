@@ -128,47 +128,66 @@ snowsql -f 06_cortex_agent.sql
 - "What is the latest news about ASML?" (uses web search)
 - "Search the internet for recent Adyen acquisitions" (uses web search)
 
-## Cost Estimate
+## Cost Estimate (10,000 Customers)
 
-### Scenario 1: Demo/Pilot (50 companies, ~50 agent queries/month)
+Two approaches to gathering company intelligence at scale -- compared side by side.
 
-| Category | Monthly Cost |
-|----------|-------------|
-| Storage (< 5 MB) | < EUR 0.01 |
-| Weekly Task (XS warehouse, ~2 min/week, 50 companies) | ~EUR 0.26 |
-| Agent queries (~50/month x 0.19 credits avg) | ~EUR 19.00 |
-| Custom tool UDF calls (~10/month) | ~EUR 0.34 |
-| Brave API (free tier, ~1,000 calls/month) | EUR 0.00 |
-| **Total** | **~EUR 19.60/month** |
+### Approach A: External Access Integration (Batch, Weekly Task)
 
-### Scenario 2: Production (10,000 companies, 10,000 agent queries/month)
+Calls Brave Search API directly via Python UDF, stores results in COMPANY_INTELLIGENCE table once per week.
 
-| Category | Calculation | Monthly Cost |
-|----------|------------|-------------|
-| Storage (~500 MB after 1 year) | 500 MB x EUR 23/TB | ~EUR 0.01 |
-| Weekly Task (10,000 companies x 5 results x 4 weeks) | M warehouse ~30 min/week | ~EUR 16.00 |
-| Agent queries (10,000/month x 0.19 credits avg) | 1,900 credits | ~EUR 3,800.00 |
-| Custom tool UDF calls (~500 on-demand/month) | XS warehouse, ~2 min total | ~EUR 0.70 |
-| Brave API (10,000 companies x 5 results x 4 weeks = 200,000 calls) | Brave Data for AI plan | ~EUR 300.00 |
-| **Total** | | **~EUR 4,117/month** |
+| Component | Calculation | Monthly Cost |
+|-----------|-------------|-------------|
+| Weekly Task (M warehouse, ~30 min/week) | 4 weeks x 0.5 hr x 4 credits/hr | EUR 8.00 |
+| Brave API calls | 10,000 companies x 5 results x 4 weeks = 200,000 calls | EUR 600.00 |
+| Storage (COMPANY_INTELLIGENCE table) | ~200,000 rows/month, ~500 MB after 1 year | EUR 0.01 |
+| **Total (Approach A)** | | **~EUR 608/month** |
 
-### Key Assumptions and Scaling Notes
+**Characteristics:**
+- Data is persistent and queryable (historical trends, week-over-week comparison)
+- Runs unattended on a schedule -- no user interaction required
+- Requires architecture team approval for external egress
+- Customer-managed Brave API key required (Data for AI plan: ~$3 per 1,000 queries)
+- Results available offline to all tools (semantic view, dashboards, reports)
 
-| Factor | Demo (50 companies) | Production (10,000 companies) |
-|--------|---------------------|-------------------------------|
-| Brave API tier | Free (2,000 queries/month) | Data for AI ($3 per 1,000 queries) |
-| Weekly task warehouse | XS (1 credit/hr) | M (4 credits/hr) -- parallelism needed |
-| Task runtime | ~2 minutes | ~30 minutes (with batching) |
-| Agent cost per query | ~0.19 credits (validated) | ~0.19 credits (same model) |
-| COMPANY_INTELLIGENCE growth | ~1,000 rows/month | ~200,000 rows/month |
-| Storage (1 year) | < 5 MB | ~500 MB |
+### Approach B: Built-in Agent Web Search (Real-time, Per Conversation)
 
-**Notes:**
-- Agent cost of **0.19 credits/query** is based on actual measured usage (0.57 credits / 3 requests = 0.19 each)
-- At 10,000 queries/month, the dominant cost is Cortex Agent token usage (~92% of total)
-- Brave API "Data for AI" plan pricing: approximately USD 3 per 1,000 queries (see https://brave.com/search/api/)
-- Warehouse sizing for 10,000 companies: consider Medium (4 credits/hr) with batching in the stored procedure, or serverless compute for auto-scaling
-- For 10,000+ agent queries, consider implementing caching or pre-computed answers for common questions to reduce token consumption
+Agent uses Snowflake's built-in `web_search` tool (Brave-powered, Zero Data Retention) during each conversation.
+
+| Component | Calculation | Monthly Cost |
+|-----------|-------------|-------------|
+| Agent queries (10,000/month) | 10,000 x 0.19 credits/query (validated) | EUR 3,800.00 |
+| Web search tool invocations | Included in agent token cost | EUR 0.00 |
+| Storage | None (results are ephemeral) | EUR 0.00 |
+| **Total (Approach B)** | | **~EUR 3,800/month** |
+
+**Characteristics:**
+- Real-time, always-fresh results (no stale data)
+- No external access integration needed (no architecture approval required)
+- No API key to manage (Snowflake handles the Brave integration)
+- Results are ephemeral -- not stored, not queryable after the conversation
+- Snowflake enforces Zero Data Retention (ZDR) with Brave
+
+### Comparison Summary
+
+| | Approach A: External Access (Batch) | Approach B: Built-in Web Search (Agentic) |
+|--|--------------------------------------|------------------------------------------|
+| **Monthly cost** | ~EUR 608 | ~EUR 3,800 |
+| **Cost driver** | Brave API volume | Cortex Agent tokens |
+| **Data freshness** | Weekly (Sunday refresh) | Real-time (live per query) |
+| **Data persistence** | Stored in Snowflake table | Ephemeral (conversation only) |
+| **Architecture approval** | Required | Not required |
+| **API key needed** | Yes (customer-managed) | No (Snowflake-managed) |
+| **Offline access** | Yes (reports, dashboards, semantic view) | No |
+| **Scales with** | Number of companies | Number of user queries |
+
+### Recommendation
+
+For most production deployments, **use both approaches together**:
+- **Approach A** for baseline weekly intelligence (stored, queryable, cheap per-company)
+- **Approach B** for ad-hoc real-time lookups when users need breaking news during a conversation
+
+This hybrid approach costs approximately **EUR 608 + agent query costs** (only paying for Approach B when users actually ask real-time questions, not for all 10,000 companies).
 
 See `07_finops_monitoring.sql` for detailed cost monitoring queries, budget alerts, optimization strategies, and health checks.
 

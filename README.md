@@ -23,6 +23,55 @@ TELCO_AI_DEMO.B2B_SALES
 | CompanyIntelligenceSearch | Custom UDF | On-demand Brave API search with structured results |
 | data_to_chart | Built-in | Generate visualizations from query results |
 
+## Internet Access: Two Approaches
+
+This solution uses **two complementary methods** for accessing internet data about companies. It is important to understand the difference.
+
+```mermaid
+flowchart LR
+    subgraph Agentic [Built-in Web Search Tool - Agentic]
+        A1[User asks question] --> A2[Agent invokes web_search]
+        A2 --> A3[Brave API via Snowflake ZDR]
+        A3 --> A4[Results in conversation only]
+    end
+
+    subgraph Custom [Custom External Access Integration]
+        B1[Weekly CRON Task] --> B2[Python UDF]
+        B2 --> B3[Brave API direct call]
+        B3 --> B4[Results stored in table]
+    end
+```
+
+| Aspect | Built-in `web_search` (Agentic) | Custom External Access (Brave UDF) |
+|--------|-------------------------------|-------------------------------------|
+| **How it works** | Agent calls Brave via Snowflake's built-in tool during a conversation | Python UDF calls Brave API via network rule + external access integration |
+| **Data flow** | Query + results traverse public internet; Snowflake enforces Zero Data Retention (ZDR) with Brave | Query + results traverse public internet; results stored permanently in COMPANY_INTELLIGENCE table |
+| **When to use** | Real-time lookups during agent conversations (breaking news, live events) | Batch processing, historical intelligence tracking, offline analysis |
+| **Setup complexity** | Toggle ON in Snowsight (ACCOUNTADMIN, one-time) | Network rule + secret + integration + UDF (requires architecture review) |
+| **Governance** | Fully managed by Snowflake; no customer API key needed | Requires customer-managed Brave API key; architecture team must approve external egress |
+| **Cost** | Included in Cortex Agents pricing (per-token) | Brave free tier (2,000 queries/month) + warehouse compute for UDF execution |
+| **Data persistence** | Ephemeral -- not stored, not queryable after the conversation | Persistent -- stored in Snowflake, queryable by the agent via semantic view |
+| **Security review needed** | No (Snowflake manages the integration) | **Yes** -- see Architecture Team Approval below |
+
+### When to Use Which
+
+- **"What is the latest news about ASML?"** -- Agent uses `web_search` (real-time, ephemeral)
+- **"Show me intelligence trends for Shell over the past month"** -- Agent queries `COMPANY_INTELLIGENCE` table (batch, historical)
+- **"Search the internet for Adyen acquisitions"** -- Agent uses `web_search` for live results, or `CompanyIntelligenceSearch` UDF for a structured Brave API call with stored results
+
+### Architecture Team Approval Required
+
+> **IMPORTANT:** The External Access Integration (`03_external_access.sql`) creates a network egress rule allowing outbound HTTPS traffic to `api.search.brave.com`. This MUST be reviewed and approved by your Architecture/Security team before deployment to production environments.
+
+**Approval considerations:**
+- **Data leaving Snowflake:** Only company names + search context strings are sent to Brave's API (no PII, no internal data)
+- **API key management:** Stored as a Snowflake SECRET object (encrypted at rest, access-controlled via RBAC)
+- **Rate limiting:** Brave free tier enforces a hard cap of 2,000 queries/month; prevents runaway costs
+- **Network scope:** Egress is restricted to a single host (`api.search.brave.com`) -- no wildcard access
+- **Alternative:** If external access is not approved, the solution still works using only the built-in `web_search` tool (no external access integration required). Remove scripts `03_external_access.sql` and `04_weekly_task.sql` and the `CompanyIntelligenceSearch` tool from the agent spec.
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites

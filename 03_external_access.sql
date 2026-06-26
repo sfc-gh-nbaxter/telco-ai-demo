@@ -2,6 +2,34 @@
 -- B2B Sales Intelligence - Brave Search External Access
 -- Creates network rule, secret, integration, and Python UDF
 -- ============================================================
+--
+-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+-- ARCHITECTURE TEAM APPROVAL REQUIRED
+-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--
+-- This script creates a network egress rule that allows outbound
+-- HTTPS traffic from Snowflake to api.search.brave.com.
+--
+-- Before deploying to production, ensure this has been reviewed
+-- and approved by your Architecture/Security team.
+--
+-- What is transmitted:
+--   - Company names + search context (e.g., "Shell Netherlands business news")
+--   - NO PII, NO internal business data, NO credentials
+--
+-- Security controls in place:
+--   - Egress restricted to single host: api.search.brave.com (port 443 only)
+--   - API key stored as Snowflake SECRET (encrypted at rest, RBAC-controlled)
+--   - Brave free tier enforces 2,000 queries/month hard cap
+--   - UDF accessible only to roles granted USAGE
+--
+-- Alternative (no external access needed):
+--   If this integration is NOT approved, you can still use the
+--   built-in web_search agent tool (managed by Snowflake, ZDR-enabled).
+--   Simply skip this script and remove CompanyIntelligenceSearch
+--   from the agent specification in 06_cortex_agent.sql.
+--
+-- ============================================================
 
 USE SCHEMA TELCO_AI_DEMO.B2B_SALES;
 

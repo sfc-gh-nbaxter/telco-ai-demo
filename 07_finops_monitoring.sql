@@ -46,30 +46,32 @@ WHERE start_time >= DATEADD(MONTH, -1, CURRENT_TIMESTAMP())
 GROUP BY 1, 2, 3
 ORDER BY usage_date DESC, credits_used DESC;
 
--- 2b. Task-specific cost tracking
+-- 2b. Weekly task run history and cost (warehouse-based task)
+-- Note: This task uses COMPUTE_WH (not serverless), so we estimate credits from runtime
 SELECT 
-    start_time::DATE AS run_date,
-    task_name,
-    SUM(credits_used) AS credits_consumed,
-    COUNT(*) AS num_runs,
-    AVG(credits_used) AS avg_credits_per_run
-FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.SERVERLESS_TASK_HISTORY(
-    DATE_RANGE_START => DATEADD(MONTH, -1, CURRENT_TIMESTAMP()),
-    DATE_RANGE_END => CURRENT_TIMESTAMP()
-))
-WHERE database_name = 'TELCO_AI_DEMO' AND schema_name = 'B2B_SALES'
-GROUP BY 1, 2
-ORDER BY run_date DESC;
+    SCHEDULED_TIME::DATE AS run_date,
+    NAME AS task_name,
+    STATE,
+    DATEDIFF('second', QUERY_START_TIME, COMPLETED_TIME) AS runtime_seconds,
+    -- Cost estimate: XS warehouse = 1 credit/hour
+    ROUND(DATEDIFF('second', QUERY_START_TIME, COMPLETED_TIME) / 3600.0, 4) AS estimated_credits
+FROM SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY
+WHERE DATABASE_NAME = 'TELCO_AI_DEMO' 
+  AND SCHEMA_NAME = 'B2B_SALES'
+  AND NAME = 'REFRESH_COMPANY_INTELLIGENCE'
+  AND SCHEDULED_TIME >= DATEADD(MONTH, -1, CURRENT_TIMESTAMP())
+ORDER BY SCHEDULED_TIME DESC;
 
--- 2c. Cortex Agent usage (if using CORTEX_AGENT_USAGE_HISTORY view)
+-- 2c. Cortex Agent usage (credits and tokens consumed)
 SELECT 
     start_time::DATE AS usage_date,
-    agent_name,
-    SUM(credits_used) AS total_credits,
+    AGENT_NAME,
+    SUM(TOKEN_CREDITS) AS total_credits,
+    SUM(TOKENS) AS total_tokens,
     COUNT(*) AS num_requests
 FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY
 WHERE start_time >= DATEADD(MONTH, -1, CURRENT_TIMESTAMP())
-  AND agent_name = 'B2B_SALES_AGENT'
+  AND AGENT_NAME = 'B2B_SALES_AGENT'
 GROUP BY 1, 2
 ORDER BY usage_date DESC;
 
@@ -148,13 +150,15 @@ COST OPTIMIZATION STRATEGIES:
 -- SECTION 5: QUICK HEALTH CHECK
 -- ============================================================
 
--- Check task is running successfully
-SELECT name, state, scheduled_time, completed_time, error_message
-FROM TABLE(TELCO_AI_DEMO.INFORMATION_SCHEMA.TASK_HISTORY(
-    TASK_NAME => 'REFRESH_COMPANY_INTELLIGENCE',
-    SCHEDULED_TIME_RANGE_START => DATEADD(DAY, -30, CURRENT_TIMESTAMP())
-))
-ORDER BY scheduled_time DESC
+-- Check task is running successfully (uses ACCOUNT_USAGE for 30-day lookback)
+-- Note: INFORMATION_SCHEMA.TASK_HISTORY only supports 7-day lookback
+SELECT NAME, STATE, SCHEDULED_TIME, COMPLETED_TIME, ERROR_MESSAGE
+FROM SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY
+WHERE DATABASE_NAME = 'TELCO_AI_DEMO'
+  AND SCHEMA_NAME = 'B2B_SALES'
+  AND NAME = 'REFRESH_COMPANY_INTELLIGENCE'
+  AND SCHEDULED_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
+ORDER BY SCHEDULED_TIME DESC
 LIMIT 10;
 
 -- Check intelligence table growth
@@ -173,3 +177,57 @@ SELECT
     DATEDIFF(DAY, MAX(SEARCH_DATE), CURRENT_TIMESTAMP()) AS days_since_last_refresh,
     COUNT(*) AS total_intelligence_rows
 FROM TELCO_AI_DEMO.B2B_SALES.COMPANY_INTELLIGENCE;
+
+-- ============================================================
+-- SECTION 6: SNOWSIGHT UI NAVIGATION FOR FINOPS
+-- ============================================================
+
+/*
+You can also monitor costs WITHOUT writing SQL using the Snowsight UI:
+
+1. OVERALL CREDIT CONSUMPTION
+   Navigate: Admin > Cost Management > Consumption
+   - Filter by "Warehouse" to see COMPUTE_WH usage (weekly task)
+   - Filter by "Serverless" > "AI Services" to see Cortex Agent credits
+   - Use the date range picker to compare month-over-month
+   - Export to CSV for chargeback reporting
+
+2. BUDGET MANAGEMENT
+   Navigate: Admin > Cost Management > Budgets
+   - Create a new budget scoped to the B2B_SALES schema
+   - Set monthly credit limit (recommended: 10 credits = ~EUR 20)
+   - Configure email notifications at 50%, 80%, and 100% thresholds
+   - View spend-vs-budget trend graph
+
+3. AGENT-SPECIFIC USAGE
+   Navigate: AI & ML > Agents > B2B_SALES_AGENT
+   - View request count, token usage, and latency metrics
+   - Identify peak usage periods
+   - Review which tools are invoked most often
+
+4. TASK MONITORING
+   Navigate: Monitoring > Task History
+   - Filter: Database = TELCO_AI_DEMO, Schema = B2B_SALES
+   - Check for FAILED or SKIPPED runs (red/orange indicators)
+   - Click a run to see execution details and error messages
+   - Verify the task completes in < 5 minutes
+
+5. QUERY HISTORY (for debugging)
+   Navigate: Activity > Query History
+   - Filter: Warehouse = COMPUTE_WH
+   - Filter: User = SYSTEM (tasks run as system)
+   - Sort by Duration to find slow queries
+   - Check for queries from the BRAVE_COMPANY_SEARCH UDF
+
+6. WAREHOUSE ACTIVITY
+   Navigate: Admin > Warehouses > COMPUTE_WH
+   - Check "Auto-suspend" is set to 60 seconds (default)
+   - Verify warehouse is not running 24/7 due to other workloads
+   - If shared with other workloads, consider a dedicated XS warehouse
+
+KEY METRICS TO WATCH WEEKLY:
+   - Total credits consumed by B2B_SALES_AGENT (target: < 2 credits/week)
+   - Task success rate (target: 100% -- check for Brave API failures)
+   - COMPANY_INTELLIGENCE row count growth (~250 rows/week expected)
+   - Warehouse idle time (should auto-suspend within 60s after task)
+*/

@@ -7,26 +7,37 @@
 -- SECTION 1: ESTIMATED MONTHLY COSTS
 -- ============================================================
 /*
-    Component                          | Credits/Run | Runs/Month | Monthly Credits | Est. Cost/Month
-    -----------------------------------|-------------|------------|-----------------|----------------
-    Weekly Task (COMPUTE_WH XS, ~2m)   | 0.033       | 4          | 0.13            | ~EUR 0.26
-    Agent queries (Cortex Analyst)      | 0.02/query  | 50         | 1.00            | ~EUR 2.00
-    Agent orchestration (LLM tokens)    | varies      | 50         | 0.50            | ~EUR 1.00
-    Web Search invocations (Brave ZDR)  | included    | 20         | included        | EUR 0.00
-    Custom tool UDF calls (XS WH)      | 0.017/call  | 10         | 0.17            | ~EUR 0.34
-    Storage (< 5 MB total)             | negligible  | -          | negligible      | < EUR 0.01
-    -----------------------------------|-------------|------------|-----------------|----------------
-    TOTAL ESTIMATE (light demo usage)  |             |            | ~1.8 credits    | ~EUR 3.60/month
-    TOTAL ESTIMATE (heavy demo usage)  |             |            | ~5.0 credits    | ~EUR 10.00/month
+    SCENARIO 1: DEMO/PILOT (50 companies, ~50 agent queries/month)
+    ---------------------------------------------------------------------------
+    Component                          | Credits/Run | Runs/Month | Monthly EUR
+    -----------------------------------|-------------|------------|------------
+    Weekly Task (COMPUTE_WH XS, ~2m)   | 0.033       | 4          | EUR 0.26
+    Agent queries (Cortex AI)           | 0.19/query  | 50         | EUR 19.00
+    Custom tool UDF calls (XS WH)      | 0.017/call  | 10         | EUR 0.34
+    Storage (< 5 MB)                   | negligible  | -          | EUR 0.01
+    Brave API (free tier)              | -           | ~1,000     | EUR 0.00
+    -----------------------------------|-------------|------------|------------
+    TOTAL                              |             |            | ~EUR 19.60
 
-    External API:
-    - Brave Search Free tier: 2,000 queries/month (plenty for 50 companies x 5 results x 4 weeks = 1,000 calls)
-    - Brave Search Pro tier: EUR 5/month for 20,000 queries if needed
+    SCENARIO 2: PRODUCTION (10,000 companies, 10,000 agent queries/month)
+    ---------------------------------------------------------------------------
+    Component                          | Calculation             | Monthly EUR
+    -----------------------------------|-------------------------|------------
+    Weekly Task (M warehouse, ~30m)    | 4 x 0.5hr x 4 cr/hr    | EUR 16.00
+    Agent queries (Cortex AI)          | 10,000 x 0.19 credits   | EUR 3,800.00
+    Custom tool UDF calls              | 500 x 0.017 credits     | EUR 0.70
+    Storage (~500 MB after 1 year)     | 500 MB x EUR 23/TB      | EUR 0.01
+    Brave API (Data for AI plan)       | 200,000 x $3/1K queries | EUR 300.00
+    -----------------------------------|-------------------------|------------
+    TOTAL                              |                         | ~EUR 4,117
 
-    Notes:
-    - Costs assume XS warehouse (1 credit/hour = ~EUR 2/hour)
-    - Cortex AI credits follow the Snowflake Service Consumption Table
-    - Web search (built-in agent tool) is included in Cortex Agents pricing
+    KEY COST DRIVER: At production scale, 92% of cost is Cortex Agent token usage.
+    Optimization: cache frequent queries, add more verified queries to semantic view,
+    implement result caching for repeated questions.
+
+    Agent cost per query: 0.19 credits (validated: 0.57 credits / 3 requests)
+    Brave API pricing: Free = 2,000/month; Data for AI = ~$3 per 1,000 queries
+    Credit-to-EUR conversion: 1 credit = ~EUR 2 (varies by contract)
 */
 
 -- ============================================================

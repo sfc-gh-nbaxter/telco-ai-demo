@@ -130,15 +130,45 @@ snowsql -f 06_cortex_agent.sql
 
 ## Cost Estimate
 
+### Scenario 1: Demo/Pilot (50 companies, ~50 agent queries/month)
+
 | Category | Monthly Cost |
 |----------|-------------|
 | Storage (< 5 MB) | < EUR 0.01 |
-| Weekly Task (XS warehouse, ~2 min/week) | ~EUR 0.26 |
-| Agent queries (~50/month, Cortex AI) | ~EUR 3.00 |
+| Weekly Task (XS warehouse, ~2 min/week, 50 companies) | ~EUR 0.26 |
+| Agent queries (~50/month x 0.19 credits avg) | ~EUR 19.00 |
 | Custom tool UDF calls (~10/month) | ~EUR 0.34 |
-| Brave API (free tier, <1000 calls/month) | EUR 0.00 |
-| **Total (light demo)** | **~EUR 3.60/month** |
-| **Total (heavy demo, ~150 queries)** | **~EUR 10.00/month** |
+| Brave API (free tier, ~1,000 calls/month) | EUR 0.00 |
+| **Total** | **~EUR 19.60/month** |
+
+### Scenario 2: Production (10,000 companies, 10,000 agent queries/month)
+
+| Category | Calculation | Monthly Cost |
+|----------|------------|-------------|
+| Storage (~500 MB after 1 year) | 500 MB x EUR 23/TB | ~EUR 0.01 |
+| Weekly Task (10,000 companies x 5 results x 4 weeks) | M warehouse ~30 min/week | ~EUR 16.00 |
+| Agent queries (10,000/month x 0.19 credits avg) | 1,900 credits | ~EUR 3,800.00 |
+| Custom tool UDF calls (~500 on-demand/month) | XS warehouse, ~2 min total | ~EUR 0.70 |
+| Brave API (10,000 companies x 5 results x 4 weeks = 200,000 calls) | Brave Data for AI plan | ~EUR 300.00 |
+| **Total** | | **~EUR 4,117/month** |
+
+### Key Assumptions and Scaling Notes
+
+| Factor | Demo (50 companies) | Production (10,000 companies) |
+|--------|---------------------|-------------------------------|
+| Brave API tier | Free (2,000 queries/month) | Data for AI ($3 per 1,000 queries) |
+| Weekly task warehouse | XS (1 credit/hr) | M (4 credits/hr) -- parallelism needed |
+| Task runtime | ~2 minutes | ~30 minutes (with batching) |
+| Agent cost per query | ~0.19 credits (validated) | ~0.19 credits (same model) |
+| COMPANY_INTELLIGENCE growth | ~1,000 rows/month | ~200,000 rows/month |
+| Storage (1 year) | < 5 MB | ~500 MB |
+
+**Notes:**
+- Agent cost of **0.19 credits/query** is based on actual measured usage (0.57 credits / 3 requests = 0.19 each)
+- At 10,000 queries/month, the dominant cost is Cortex Agent token usage (~92% of total)
+- Brave API "Data for AI" plan pricing: approximately USD 3 per 1,000 queries (see https://brave.com/search/api/)
+- Warehouse sizing for 10,000 companies: consider Medium (4 credits/hr) with batching in the stored procedure, or serverless compute for auto-scaling
+- For 10,000+ agent queries, consider implementing caching or pre-computed answers for common questions to reduce token consumption
 
 See `07_finops_monitoring.sql` for detailed cost monitoring queries, budget alerts, optimization strategies, and health checks.
 
